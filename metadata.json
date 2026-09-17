@@ -1,0 +1,6 @@
+{
+  "name": "彩票量化分析与回测中台",
+  "description": "基于马尔可夫链转移矩阵、蒙特卡洛抽样以及火星引擎旋转矩阵降维算法的彩票量化分析与历史沙盘回测大屏。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
