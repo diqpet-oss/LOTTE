@@ -38,13 +38,17 @@ export default function App() {
 
   // Retrieve current active baseline history
   const activeCustomHistory = customHistories[playType];
-  const activeFullHistory = activeCustomHistory || getHistoricalData(playType, 100);
+  const defaultHistory = useMemo(() => getHistoricalData(playType, 100), [playType]);
+  const activeFullHistory = useMemo(
+    () => activeCustomHistory || defaultHistory,
+    [activeCustomHistory, defaultHistory]
+  );
 
   // Core execution function for current engine
   const executeEngineCalculation = useCallback(async () => {
     setLoading(true);
     try {
-      const fullList = customHistories[playType] || getHistoricalData(playType, 100);
+      const fullList = activeFullHistory;
       const activeList = selectedHistoricalOffset > 0 ? fullList.slice(selectedHistoricalOffset) : fullList;
 
       if (engineType === 'v2') {
@@ -97,7 +101,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [playType, engineType, historyLimit, ticketCount, customHistories, selectedHistoricalOffset]);
+  }, [playType, engineType, historyLimit, ticketCount, activeFullHistory, selectedHistoricalOffset]);
 
   // Real-time live lottery clock and schedule tracker
   const { scheduleInfo, currentLiveTime } = useRealtimeLottery(
@@ -175,20 +179,25 @@ export default function App() {
     engineType === 'v2' ? v2Data?.targetIssueInfo : marsData?.targetIssueInfo;
 
   const activeTargetInfo = useMemo(() => {
-    if (!baseTargetInfo) return undefined;
-    if (selectedHistoricalOffset === 0) {
+    if (baseTargetInfo) {
+      if (selectedHistoricalOffset === 0) {
+        return {
+          ...baseTargetInfo,
+          targetIssue: scheduleInfo.targetIssue,
+          targetDrawDate: scheduleInfo.targetDrawDate,
+          targetDayOfWeek: scheduleInfo.targetDayOfWeek,
+          isToday: scheduleInfo.isToday,
+          countdown: scheduleInfo.countdown,
+          nowFormatted: currentLiveTime
+        };
+      }
       return {
         ...baseTargetInfo,
-        targetIssue: scheduleInfo.targetIssue,
-        targetDrawDate: scheduleInfo.targetDrawDate,
-        targetDayOfWeek: scheduleInfo.targetDayOfWeek,
-        isToday: scheduleInfo.isToday,
-        countdown: scheduleInfo.countdown,
         nowFormatted: currentLiveTime
       };
     }
     return {
-      ...baseTargetInfo,
+      ...scheduleInfo,
       nowFormatted: currentLiveTime
     };
   }, [baseTargetInfo, selectedHistoricalOffset, scheduleInfo, currentLiveTime]);
