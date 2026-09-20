@@ -1,10 +1,12 @@
 import React from 'react';
-import { Cpu, Terminal, RefreshCw, Calendar, Tag } from 'lucide-react';
-import { EngineType, PlayType } from '../types';
+import { Cpu, Terminal, RefreshCw, Clock, Tag, Radio } from 'lucide-react';
+import { EngineType, PlayType, TargetIssueInfo } from '../types';
 
 interface NavbarProps {
   playType: PlayType;
   engineType: EngineType;
+  targetInfo?: TargetIssueInfo;
+  currentLiveTime?: string;
   onOpenCodeModal: () => void;
   onRefreshData: () => void;
   loading: boolean;
@@ -13,6 +15,8 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   playType,
   engineType,
+  targetInfo,
+  currentLiveTime,
   onOpenCodeModal,
   onRefreshData,
   loading
@@ -30,8 +34,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-900">
                 彩票量化分析与推演平台
               </h1>
-              <span className="px-2 py-0.5 text-xs font-semibold rounded bg-blue-50 text-blue-700 border border-blue-200">
-                2026 最新基准
+              <span className="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                实时开奖联动
               </span>
             </div>
             <p className="text-xs text-slate-500">
@@ -42,10 +47,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Live Status Indicators & Actions */}
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          {/* Current Date Anchor */}
-          <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 text-xs text-slate-600 border border-slate-200">
-            <Calendar className="w-3.5 h-3.5 text-slate-500" />
-            <span>基准时间: 2026年9月17日</span>
+          {/* Realtime Live Clock Anchor */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 text-xs text-slate-700 border border-slate-200 font-mono">
+            <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+            <span className="font-semibold">{currentLiveTime || '实时时钟获取中...'}</span>
+            {targetInfo?.isToday && (
+              <span className="ml-1 px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-bold text-[11px]">
+                今晚开奖
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 text-xs text-slate-700 border border-slate-200">

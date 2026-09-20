@@ -40,15 +40,20 @@ export interface MarkovNumberProb {
 }
 
 export interface TargetIssueInfo {
-  targetIssue: string; // e.g. "2024096"
-  targetDrawDate: string; // e.g. "2024-08-20"
-  targetDayOfWeek: string; // e.g. "周二 21:15"
+  targetIssue: string; // e.g. "2026109"
+  targetDrawDate: string; // e.g. "2026-09-20"
+  targetDayOfWeek: string; // e.g. "周日 21:15"
   status: 'upcoming'; // 待开奖
-  baselineIssue: string; // e.g. "2024095"
-  baselineDrawDate: string; // e.g. "2024-08-18"
+  baselineIssue: string; // e.g. "2026108"
+  baselineDrawDate: string; // e.g. "2026-09-17"
   baselineReds: number[];
   baselineBlues: number[];
   historySampleCount: number; // e.g. 50 期
+  isToday?: boolean; // 当天是否为开奖日
+  countdown?: string; // 实时倒计时 例如 "10小时50分23秒"
+  secondsRemaining?: number; // 剩余秒数
+  nowFormatted?: string; // 当前系统北京时间
+  isLiveTarget?: boolean; // 是否处于实时最新期
 }
 
 export interface BlueBallInferenceItem {

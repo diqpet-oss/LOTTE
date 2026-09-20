@@ -23,6 +23,8 @@ interface BaselineTargetBannerProps {
   onAddCustomDraw: (newDraw: LotteryIssue) => void;
   onResetHistory: () => void;
   isCustomized: boolean;
+  selectedHistoricalOffset?: number;
+  onSelectHistoricalOffset?: (offset: number) => void;
 }
 
 export const BaselineTargetBanner: React.FC<BaselineTargetBannerProps> = ({
@@ -31,7 +33,9 @@ export const BaselineTargetBanner: React.FC<BaselineTargetBannerProps> = ({
   recentHistory,
   onAddCustomDraw,
   onResetHistory,
-  isCustomized
+  isCustomized,
+  selectedHistoricalOffset = 0,
+  onSelectHistoricalOffset
 }) => {
   const [showRecentDrawer, setShowRecentDrawer] = useState(false);
   const [showInputModal, setShowInputModal] = useState(false);
@@ -62,7 +66,7 @@ export const BaselineTargetBanner: React.FC<BaselineTargetBannerProps> = ({
     // Pre-fill next issue suggestion
     const nextGuess = targetInfo.targetIssue;
     setInputIssue(nextGuess);
-    setInputDate(targetInfo.targetDrawDate || '2026-09-17');
+    setInputDate(targetInfo.targetDrawDate || new Date().toISOString().split('T')[0]);
     setInputReds('');
     setInputBlues('');
     setInputError(null);
@@ -125,17 +129,18 @@ export const BaselineTargetBanner: React.FC<BaselineTargetBannerProps> = ({
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <span>即将开奖期号推演 & 历史就近基准看板</span>
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700">
-                  实时同步就近数据
+                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  实时开奖联动
                 </span>
               </h2>
-              <span className="px-2 py-0.5 text-xs rounded bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1">
-                <Calendar className="w-3 h-3 text-slate-500" />
-                基准时间: 2026年9月17日
+              <span className="px-2 py-0.5 text-xs rounded bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1 font-mono">
+                <Clock className="w-3 h-3 text-blue-600" />
+                <span>实时时间: {targetInfo.nowFormatted || '实时同步中'}</span>
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              严格以就近真实已开奖一期为输入基底，推演生成<strong>当下即将开奖的一期号</strong>，两期数据严格分离
+              严格按照当下日历时钟动态追踪开奖节奏，以就近真实已开奖一期为输入基底，推演生成<strong>当下即将开奖的一期号</strong>
             </p>
           </div>
         </div>
@@ -162,6 +167,53 @@ export const BaselineTargetBanner: React.FC<BaselineTargetBannerProps> = ({
         </div>
       </div>
 
+      {/* Realtime Progression & Issue Switcher Bar */}
+      <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3 text-xs flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-slate-500 font-medium">期号推演联动:</span>
+          <button
+            onClick={() => onSelectHistoricalOffset?.(0)}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+              selectedHistoricalOffset === 0
+                ? 'bg-blue-600 text-white shadow-xs font-bold'
+                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                selectedHistoricalOffset === 0 ? 'bg-emerald-300 animate-pulse' : 'bg-emerald-500'
+              }`}
+            />
+            <span>当下实时待开 (第 {targetInfo.targetIssue} 期)</span>
+          </button>
+
+          {recentHistory.slice(0, 4).map((h, i) => (
+            <button
+              key={h.issue}
+              onClick={() => onSelectHistoricalOffset?.(i + 1)}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                selectedHistoricalOffset === i + 1
+                  ? 'bg-blue-600 text-white shadow-xs font-bold'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+              title={`回溯推演第 ${h.issue} 期基于之前数据的生成状态`}
+            >
+              <span>第 {h.issue} 期 ({h.date.slice(5)})</span>
+            </button>
+          ))}
+        </div>
+
+        {selectedHistoricalOffset > 0 && (
+          <button
+            onClick={() => onSelectHistoricalOffset?.(0)}
+            className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 cursor-pointer bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200"
+          >
+            <RotateCcw className="w-3 h-3" />
+            <span>返回当下实时待开期</span>
+          </button>
+        )}
+      </div>
+
       {/* Main Dual Card Comparison Layout */}
       <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Left Box: TARGET UPCOMING DRAW (当下即将开奖的一期) */}
@@ -173,12 +225,15 @@ export const BaselineTargetBanner: React.FC<BaselineTargetBannerProps> = ({
                   本次量化生成目标
                 </span>
                 <span className="text-xs font-medium text-blue-700 flex items-center gap-1">
-                  {targetInfo.targetDrawDate === '2026-09-17' ? (
-                    <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold border border-rose-200">
-                      今晚开奖 (2026-09-17)
+                  {targetInfo.isToday ? (
+                    <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold border border-rose-200 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
+                      今晚开奖 ({targetInfo.targetDrawDate})
                     </span>
                   ) : (
-                    <span>当下待开奖 (Upcoming)</span>
+                    <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
+                      待开奖 ({targetInfo.targetDrawDate})
+                    </span>
                   )}
                 </span>
               </div>
@@ -199,6 +254,12 @@ export const BaselineTargetBanner: React.FC<BaselineTargetBannerProps> = ({
                 <Clock className="w-3 h-3" />
                 <span>{targetInfo.targetDayOfWeek} 开奖</span>
               </div>
+              {targetInfo.countdown && (
+                <div className="mt-1 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 font-mono text-[11px] font-semibold flex items-center justify-end gap-1">
+                  <Clock className="w-3 h-3 text-amber-600" />
+                  <span>倒计时: {targetInfo.countdown}</span>
+                </div>
+              )}
             </div>
           </div>
 

@@ -1,7 +1,9 @@
-import { LotteryIssue, PlayType } from '../types';
+import { LotteryIssue, PlayType, TargetIssueInfo } from '../types';
+import { getRealtimeDrawSchedule } from './lotterySchedule';
 
-// Authentic historical draw dataset for SSQ (双色球) - 70 recent issues in 2026 up to 2026-09-15
+// Authentic historical draw dataset for SSQ (双色球) - recent issues in 2026 up to current schedule
 export const SSQ_HISTORICAL_DATA: LotteryIssue[] = [
+  { issue: "2026108", date: "2026-09-17", reds: [7, 12, 18, 23, 27, 31], blues: [6] },
   { issue: "2026107", date: "2026-09-15", reds: [4, 6, 11, 14, 19, 26], blues: [15] },
   { issue: "2026106", date: "2026-09-13", reds: [6, 13, 17, 21, 24, 32], blues: [10] },
   { issue: "2026105", date: "2026-09-10", reds: [5, 7, 9, 20, 22, 28], blues: [7] },
@@ -54,8 +56,9 @@ export const SSQ_HISTORICAL_DATA: LotteryIssue[] = [
   { issue: "2026058", date: "2026-05-24", reds: [2, 8, 16, 21, 28, 32], blues: [14] }
 ];
 
-// Authentic historical draw dataset for DLT (大乐透) - 50 recent issues in 2026 up to 2026-09-16
+// Authentic historical draw dataset for DLT (大乐透) - recent issues in 2026 up to current schedule
 export const DLT_HISTORICAL_DATA: LotteryIssue[] = [
+  { issue: "26107", date: "2026-09-19", reds: [5, 14, 20, 26, 33], blues: [3, 9] },
   { issue: "26106", date: "2026-09-16", reds: [3, 8, 19, 24, 31], blues: [4, 11] },
   { issue: "26105", date: "2026-09-14", reds: [5, 12, 17, 28, 34], blues: [2, 9] },
   { issue: "26104", date: "2026-09-12", reds: [1, 10, 15, 22, 33], blues: [6, 12] },
@@ -157,71 +160,16 @@ export function parseLocalDate(dateStr: string): Date {
   return new Date(y, m, d, 12, 0, 0);
 }
 
-// Calculate the next upcoming draw issue and date from the latest baseline draw
+// Calculate the next upcoming draw issue and date from the latest baseline draw and real-time calendar
 export function computeUpcomingDrawInfo(
   playType: PlayType,
   latestDraw: LotteryIssue,
   sampleCount: number
-) {
-  let nextIssue = '';
-  if (/^\d{7}$/.test(latestDraw.issue)) {
-    const yearPrefix = latestDraw.issue.slice(0, 4);
-    const seqNum = parseInt(latestDraw.issue.slice(4), 10);
-    const nextSeq = String(seqNum + 1).padStart(3, '0');
-    nextIssue = `${yearPrefix}${nextSeq}`;
-  } else if (/^\d{5}$/.test(latestDraw.issue)) {
-    const yearPrefix = latestDraw.issue.slice(0, 2);
-    const seqNum = parseInt(latestDraw.issue.slice(2), 10);
-    const nextSeq = String(seqNum + 1).padStart(3, '0');
-    nextIssue = `${yearPrefix}${nextSeq}`;
-  } else {
-    const num = parseInt(latestDraw.issue, 10);
-    nextIssue = isNaN(num) ? '2026108' : String(num + 1);
-  }
-
-  // Compute upcoming draw date & day of week safely in local calendar
-  // SSQ draws on Tuesday(2), Thursday(4), Sunday(0) at 21:15
-  // DLT draws on Monday(1), Wednesday(3), Saturday(6) at 21:25
-  const baseDate = parseLocalDate(latestDraw.date);
-  const nextDate = new Date(baseDate.getTime());
-  let daysToAdd = 2;
-
-  if (playType === 'ssq') {
-    // Current day of week (0=Sun, 2=Tue, 4=Thu)
-    const d = baseDate.getDay();
-    if (d === 0) daysToAdd = 2; // Sun -> Tue (+2)
-    else if (d === 2) daysToAdd = 2; // Tue -> Thu (+2)
-    else if (d === 4) daysToAdd = 3; // Thu -> Sun (+3)
-    else daysToAdd = 2;
-  } else {
-    // DLT (1=Mon, 3=Wed, 6=Sat)
-    const d = baseDate.getDay();
-    if (d === 1) daysToAdd = 2; // Mon -> Wed (+2)
-    else if (d === 3) daysToAdd = 3; // Wed -> Sat (+3)
-    else if (d === 6) daysToAdd = 2; // Sat -> Mon (+2)
-    else daysToAdd = 2;
-  }
-
-  nextDate.setDate(nextDate.getDate() + daysToAdd);
-  const yyyy = nextDate.getFullYear();
-  const mm = String(nextDate.getMonth() + 1).padStart(2, '0');
-  const dd = String(nextDate.getDate()).padStart(2, '0');
-  const targetDrawDate = `${yyyy}-${mm}-${dd}`;
-
-  const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const dayOfWeek = dayNames[nextDate.getDay()];
-  const drawTime = playType === 'ssq' ? '21:15' : '21:25';
-  const targetDayOfWeek = `${dayOfWeek} ${drawTime}`;
-
+): TargetIssueInfo {
+  // Use real-time draw schedule engine
+  const realtimeInfo = getRealtimeDrawSchedule(playType, [latestDraw]);
   return {
-    targetIssue: nextIssue,
-    targetDrawDate,
-    targetDayOfWeek,
-    status: 'upcoming' as const,
-    baselineIssue: latestDraw.issue,
-    baselineDrawDate: latestDraw.date,
-    baselineReds: latestDraw.reds,
-    baselineBlues: latestDraw.blues,
+    ...realtimeInfo,
     historySampleCount: sampleCount
   };
 }

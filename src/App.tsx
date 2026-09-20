@@ -13,12 +13,14 @@ import { runMarkovEngine } from './services/markovEngine';
 import { runMarsEngine } from './services/marsEngine';
 import { runSandboxBacktest } from './services/backtestEngine';
 import { getHistoricalData } from './services/lotteryData';
+import { useRealtimeLottery } from './hooks/useRealtimeLottery';
 
 export default function App() {
   const [playType, setPlayType] = useState<PlayType>('ssq');
   const [engineType, setEngineType] = useState<EngineType>('v2');
   const [historyLimit, setHistoryLimit] = useState<number>(50);
   const [ticketCount, setTicketCount] = useState<number>(20);
+  const [selectedHistoricalOffset, setSelectedHistoricalOffset] = useState<number>(0);
 
   // Custom baseline draw storage per play type
   const [customHistories, setCustomHistories] = useState<Record<PlayType, LotteryIssue[] | null>>({
@@ -42,7 +44,8 @@ export default function App() {
   const executeEngineCalculation = useCallback(async () => {
     setLoading(true);
     try {
-      const activeList = customHistories[playType] || getHistoricalData(playType, 100);
+      const fullList = customHistories[playType] || getHistoricalData(playType, 100);
+      const activeList = selectedHistoricalOffset > 0 ? fullList.slice(selectedHistoricalOffset) : fullList;
 
       if (engineType === 'v2') {
         try {
@@ -94,7 +97,14 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [playType, engineType, historyLimit, ticketCount, customHistories]);
+  }, [playType, engineType, historyLimit, ticketCount, customHistories, selectedHistoricalOffset]);
+
+  // Real-time live lottery clock and schedule tracker
+  const { scheduleInfo, currentLiveTime } = useRealtimeLottery(
+    playType,
+    activeFullHistory,
+    executeEngineCalculation
+  );
 
   // Initial & reactive trigger
   useEffect(() => {
@@ -161,8 +171,27 @@ export default function App() {
   const currentCost =
     engineType === 'v2' ? v2Data?.costRMB || 0 : marsData?.costRMB || 0;
   const currentMarkovProbs = v2Data?.markovProbs || [];
-  const targetInfo =
+  const baseTargetInfo =
     engineType === 'v2' ? v2Data?.targetIssueInfo : marsData?.targetIssueInfo;
+
+  const activeTargetInfo = useMemo(() => {
+    if (!baseTargetInfo) return undefined;
+    if (selectedHistoricalOffset === 0) {
+      return {
+        ...baseTargetInfo,
+        targetIssue: scheduleInfo.targetIssue,
+        targetDrawDate: scheduleInfo.targetDrawDate,
+        targetDayOfWeek: scheduleInfo.targetDayOfWeek,
+        isToday: scheduleInfo.isToday,
+        countdown: scheduleInfo.countdown,
+        nowFormatted: currentLiveTime
+      };
+    }
+    return {
+      ...baseTargetInfo,
+      nowFormatted: currentLiveTime
+    };
+  }, [baseTargetInfo, selectedHistoricalOffset, scheduleInfo, currentLiveTime]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900 pb-20">
@@ -170,6 +199,8 @@ export default function App() {
       <Navbar
         playType={playType}
         engineType={engineType}
+        targetInfo={activeTargetInfo}
+        currentLiveTime={currentLiveTime}
         onOpenCodeModal={() => setIsCodeModalOpen(true)}
         onRefreshData={executeEngineCalculation}
         loading={loading}
@@ -183,7 +214,7 @@ export default function App() {
           engineType={engineType}
           historyLimit={historyLimit}
           ticketCount={ticketCount}
-          targetInfo={targetInfo}
+          targetInfo={activeTargetInfo}
           onPlayTypeChange={setPlayType}
           onEngineTypeChange={setEngineType}
           onHistoryLimitChange={setHistoryLimit}
@@ -194,11 +225,13 @@ export default function App() {
         {/* Module 2: Dedicated Baseline & Target Upcoming Issue Cockpit */}
         <BaselineTargetBanner
           playType={playType}
-          targetInfo={targetInfo}
+          targetInfo={activeTargetInfo}
           recentHistory={activeFullHistory}
           onAddCustomDraw={handleAddCustomDraw}
           onResetHistory={handleResetHistory}
           isCustomized={Boolean(customHistories[playType])}
+          selectedHistoricalOffset={selectedHistoricalOffset}
+          onSelectHistoricalOffset={setSelectedHistoricalOffset}
         />
 
         {/* Module 3: Engine Status & Mathematical Metrics Banner */}
@@ -221,7 +254,7 @@ export default function App() {
           playType={playType}
           engineType={engineType}
           costRMB={currentCost}
-          targetInfo={targetInfo}
+          targetInfo={activeTargetInfo}
         />
 
         {/* Module 6: Sandboxed Historical Deduction Backtest Cockpit (Isolated) */}
@@ -231,7 +264,7 @@ export default function App() {
           backtestData={backtestData}
           onRunBacktest={handleRunBacktest}
           loading={backtestLoading}
-          targetIssue={targetInfo?.targetIssue}
+          targetIssue={activeTargetInfo?.targetIssue}
         />
       </main>
 
