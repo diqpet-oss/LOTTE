@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Navbar } from './components/Navbar';
 import { DualEnginePanel } from './components/DualEnginePanel';
 import { BaselineTargetBanner } from './components/BaselineTargetBanner';
