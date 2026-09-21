@@ -1,4 +1,4 @@
-import { GeneratedTicket, LotteryIssue, MarkovNumberProb, PlayType, V2GenerateResponse } from '../types';
+import { ExclusionFilterConfig, GeneratedTicket, LotteryIssue, MarkovNumberProb, PlayType, V2GenerateResponse } from '../types';
 import {
   calculateACValue,
   calculateMaxConsecutive,
@@ -9,16 +9,21 @@ import {
   getHistoricalData
 } from './lotteryData';
 import { analyzeBlueInference, sampleInferredBlues } from './blueEngine';
+import { getDefaultFilterConfig, validateTicketFilter } from './filterEngine';
 
 export function runMarkovEngine(
   playType: PlayType,
   historyLimit: number = 50,
   ticketCount: number = 10,
-  customHistory?: LotteryIssue[]
+  customHistory?: LotteryIssue[],
+  filterConfig?: ExclusionFilterConfig
 ): V2GenerateResponse {
   const history = customHistory && customHistory.length > 0
     ? customHistory.slice(0, Math.min(historyLimit, customHistory.length))
     : getHistoricalData(playType, historyLimit);
+
+  const activeFilter = filterConfig || getDefaultFilterConfig(playType);
+  const baselineReds = history[0]?.reds || [];
 
   const targetIssueInfo = computeUpcomingDrawInfo(playType, history[0], history.length);
   const totalRedsCount = playType === 'ssq' ? 33 : 35;
@@ -134,18 +139,29 @@ export function runMarkovEngine(
   while (generatedTickets.length < ticketCount && attempts < maxAttempts) {
     attempts++;
 
-    // Pick 2 or 3 bankers
-    const bankerSampleCount = Math.random() > 0.5 ? 3 : 2;
-    const shuffledBankers = [...top12Bankers].sort(() => Math.random() - 0.5);
-    const chosenBankers = shuffledBankers.slice(0, bankerSampleCount);
+    const killedRedSet = new Set(activeFilter.killedReds);
+    const mustIncludeReds = activeFilter.mustIncludeReds.filter((r) => r <= totalRedsCount);
+
+    // Pick 2 or 3 bankers, prioritizing user's mustIncludeReds
+    const bankerSampleCount = Math.min(redDrawCount - 1, Math.max(2, mustIncludeReds.length));
+    const availableTopBankers = top12Bankers.filter((b) => !killedRedSet.has(b) && !mustIncludeReds.includes(b));
+    const shuffledBankers = [...availableTopBankers].sort(() => Math.random() - 0.5);
+    const chosenBankers = [
+      ...mustIncludeReds,
+      ...shuffledBankers.slice(0, Math.max(0, bankerSampleCount - mustIncludeReds.length))
+    ];
 
     // Remaining needed from other pool numbers (can include other numbers weighted by probability)
     const remainingCount = redDrawCount - chosenBankers.length;
     const remainingCandidates = [];
     for (let n = 1; n <= totalRedsCount; n++) {
-      if (!chosenBankers.includes(n)) {
+      if (!chosenBankers.includes(n) && !killedRedSet.has(n)) {
         remainingCandidates.push(n);
       }
+    }
+
+    if (remainingCandidates.length < remainingCount) {
+      break;
     }
 
     // Weighted random sample based on Markov probabilities
@@ -170,19 +186,7 @@ export function runMarkovEngine(
 
     const candidateReds = [...chosenBankers, ...chosenOthers].sort((a, b) => a - b);
 
-    // Rule: Odd/Even ratio
-    const parity = calculateOddEvenRatio(candidateReds);
-    if (parity.odd !== targetOdd || parity.even !== targetEven) {
-      continue;
-    }
-
-    // Rule: Filter 3-consecutive numbers
-    const consecutive = calculateMaxConsecutive(candidateReds);
-    if (consecutive >= 3) {
-      continue;
-    }
-
-    // Rule: AC Value
+    // Filter by AC Value
     const ac = calculateACValue(candidateReds);
     if (ac < acRange[0] || ac > acRange[1]) {
       continue;
@@ -193,10 +197,33 @@ export function runMarkovEngine(
     if (seenTicketKeys.has(redKey)) {
       continue;
     }
-    seenTicketKeys.add(redKey);
 
-    // Blue Ball: Allocate based on historical Markov & omission inference
-    const blueSelection = allocatedBlues[generatedTickets.length % allocatedBlues.length];
+    // Blue Ball: Allocate based on historical Markov & omission inference, excluding killed blues
+    let blueSelection = allocatedBlues[generatedTickets.length % allocatedBlues.length];
+    if (activeFilter.killedBlues.length > 0) {
+      const safeBlues = blueSelection.filter((b) => !activeFilter.killedBlues.includes(b));
+      if (safeBlues.length < blueDrawCount) {
+        // Find alternative blue not killed
+        const fallbackBlues: number[] = [];
+        for (let b = 1; b <= blueMax; b++) {
+          if (!activeFilter.killedBlues.includes(b)) {
+            fallbackBlues.push(b);
+          }
+        }
+        if (fallbackBlues.length >= blueDrawCount) {
+          blueSelection = fallbackBlues.slice(0, blueDrawCount);
+        }
+      }
+    }
+
+    // Comprehensive exclusion and reduction filter validation
+    const filterResult = validateTicketFilter(candidateReds, blueSelection, activeFilter, baselineReds);
+    if (!filterResult.passed) {
+      continue;
+    }
+
+    seenTicketKeys.add(redKey);
+    const parity = calculateOddEvenRatio(candidateReds);
 
     generatedTickets.push({
       id: `V2-${generatedTickets.length + 1}`,
@@ -205,7 +232,11 @@ export function runMarkovEngine(
       acValue: ac,
       oddEvenRatio: parity.ratioStr,
       sumVal: calculateSum(candidateReds),
-      bankerCount: chosenBankers.length
+      bankerCount: chosenBankers.length,
+      filterReasons: filterResult.passedReasons,
+      primeCount: filterResult.primeCount,
+      consecutiveCount: filterResult.consecutiveRun,
+      repeatCount: filterResult.repeatCount
     });
   }
 

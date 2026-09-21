@@ -39,12 +39,13 @@ async function startServer() {
   // API 3: V2 Classic Engine (Markov + Monte Carlo)
   app.post('/api/v2/generate', (req, res) => {
     try {
-      const { play_type = 'ssq', history_limit = 50, ticket_count = 10, custom_history } = req.body || {};
+      const { play_type = 'ssq', history_limit = 50, ticket_count = 10, custom_history, filter_config } = req.body || {};
       const result = runMarkovEngine(
         play_type as PlayType,
         Number(history_limit),
         Number(ticket_count),
-        custom_history
+        custom_history,
+        filter_config
       );
       res.json(result);
     } catch (err: any) {
@@ -55,12 +56,13 @@ async function startServer() {
   // API 4: Mars Independent Engine (Covering Design + Defense)
   app.post('/api/mars/generate', (req, res) => {
     try {
-      const { play_type = 'ssq', history_limit = 50, ticket_limit = 50, custom_history } = req.body || {};
+      const { play_type = 'ssq', history_limit = 50, ticket_limit = 50, custom_history, filter_config } = req.body || {};
       const result = runMarsEngine(
         play_type as PlayType,
         Number(history_limit),
         Number(ticket_limit),
-        custom_history
+        custom_history,
+        filter_config
       );
       res.json(result);
     } catch (err: any) {

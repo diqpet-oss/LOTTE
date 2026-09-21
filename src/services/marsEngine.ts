@@ -1,4 +1,4 @@
-import { GeneratedTicket, LotteryIssue, MarsGenerateResponse, PlayType } from '../types';
+import { ExclusionFilterConfig, GeneratedTicket, LotteryIssue, MarsGenerateResponse, PlayType } from '../types';
 import {
   calculateACValue,
   calculateOddEvenRatio,
@@ -8,6 +8,7 @@ import {
   getHistoricalData
 } from './lotteryData';
 import { analyzeBlueInference, sampleInferredBlues } from './blueEngine';
+import { getDefaultFilterConfig, validateTicketFilter } from './filterEngine';
 
 // Combinatorial helper: generates all k-combinations from an array
 function getCombinations<T>(arr: T[], k: number): T[][] {
@@ -31,11 +32,15 @@ export function runMarsEngine(
   playType: PlayType,
   historyLimit: number = 50,
   maxTicketLimit?: number,
-  customHistory?: LotteryIssue[]
+  customHistory?: LotteryIssue[],
+  filterConfig?: ExclusionFilterConfig
 ): MarsGenerateResponse {
   const history = customHistory && customHistory.length > 0
     ? customHistory.slice(0, Math.min(historyLimit, customHistory.length))
     : getHistoricalData(playType, historyLimit);
+
+  const activeFilter = filterConfig || getDefaultFilterConfig(playType);
+  const baselineReds = history[0]?.reds || [];
 
   const targetIssueInfo = computeUpcomingDrawInfo(playType, history[0], history.length);
   const totalRedsCount = playType === 'ssq' ? 33 : 35;
@@ -51,9 +56,13 @@ export function runMarsEngine(
     omissionValues.reduce((acc, val) => acc + Math.pow(val - meanOmission, 2), 0) / omissionValues.length;
   const stdDev = Math.sqrt(variance) || 1;
 
-  // Rank by deviation (Z-score)
+  // Rank by deviation (Z-score), excluding killed reds
+  const killedRedSet = new Set(activeFilter.killedReds);
+  const mustIncludeReds = activeFilter.mustIncludeReds.filter((r) => r <= totalRedsCount);
+
   const numbersWithStats = [];
   for (let n = 1; n <= totalRedsCount; n++) {
+    if (killedRedSet.has(n)) continue;
     const omission = omissions[n];
     const zScore = (omission - meanOmission) / stdDev;
     numbersWithStats.push({ number: n, omission, zScore });
@@ -62,8 +71,15 @@ export function runMarsEngine(
   // Sort descending by omission / zScore (extreme cold numbers)
   numbersWithStats.sort((a, b) => b.omission - a.omission || b.zScore - a.zScore);
 
-  // Top 12 numbers form the "极冷复式母集"
-  const coldMotherSetStats = numbersWithStats.slice(0, 12);
+  // Top 12 numbers form the "极冷复式母集", embedding user's must-include numbers
+  const availableMotherCandidates = numbersWithStats.filter((item) => !mustIncludeReds.includes(item.number));
+  const mustIncludeStats = mustIncludeReds.map((n) => ({
+    number: n,
+    omission: omissions[n] || 0,
+    zScore: ((omissions[n] || 0) - meanOmission) / stdDev
+  }));
+  const neededFromStats = Math.max(0, 12 - mustIncludeStats.length);
+  const coldMotherSetStats = [...mustIncludeStats, ...availableMotherCandidates.slice(0, neededFromStats)];
   const motherSet = coldMotherSetStats.map((item) => item.number).sort((a, b) => a - b);
 
   // 2. Covering Design Rotation Matrix ("中6保5" or "中5保4")
@@ -138,20 +154,31 @@ export function runMarsEngine(
     const parity = calculateOddEvenRatio(reds);
     const sumVal = calculateSum(reds);
 
-    // Defense 1: Reject All Odd or All Even
-    if (parity.odd === k || parity.even === k) {
+    // Blue Ball Allocation: strictly driven by historical posterior probability, avoiding killed blues
+    let blues = allocatedBlues[validCoveringTickets.length % allocatedBlues.length];
+    if (activeFilter.killedBlues.length > 0) {
+      const safeBlues = blues.filter((b) => !activeFilter.killedBlues.includes(b));
+      const blueDrawCount = playType === 'ssq' ? 1 : 2;
+      if (safeBlues.length < blueDrawCount) {
+        const fallbackBlues: number[] = [];
+        for (let b = 1; b <= blueMax; b++) {
+          if (!activeFilter.killedBlues.includes(b)) {
+            fallbackBlues.push(b);
+          }
+        }
+        if (fallbackBlues.length >= blueDrawCount) {
+          blues = fallbackBlues.slice(0, blueDrawCount);
+        }
+      }
+    }
+
+    // Comprehensive exclusion and reduction filter validation
+    const filterResult = validateTicketFilter(reds, blues, activeFilter, baselineReds);
+    if (!filterResult.passed) {
       defenseFilteredCount++;
       continue;
     }
 
-    // Defense 2: Reject extreme historical sum bounds
-    if (sumVal < sumMin || sumVal > sumMax) {
-      defenseFilteredCount++;
-      continue;
-    }
-
-    // Blue Ball Allocation: strictly driven by historical posterior probability
-    const blues = allocatedBlues[validCoveringTickets.length % allocatedBlues.length];
     const ac = calculateACValue(reds);
 
     validCoveringTickets.push({
@@ -162,7 +189,11 @@ export function runMarsEngine(
       oddEvenRatio: parity.ratioStr,
       sumVal,
       bankerCount: reds.length, // All from cold mother set
-      isCoveringTicket: true
+      isCoveringTicket: true,
+      filterReasons: filterResult.passedReasons,
+      primeCount: filterResult.primeCount,
+      consecutiveCount: filterResult.consecutiveRun,
+      repeatCount: filterResult.repeatCount
     });
   }
 

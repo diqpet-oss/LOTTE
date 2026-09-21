@@ -8,12 +8,14 @@ import { TicketList } from './components/TicketList';
 import { BacktestSandbox } from './components/BacktestSandbox';
 import { PythonSourceModal } from './components/PythonSourceModal';
 import { RiskFooter } from './components/RiskFooter';
-import { BacktestSummary, EngineType, LotteryIssue, MarsGenerateResponse, PlayType, V2GenerateResponse } from './types';
+import { BacktestSummary, EngineType, ExclusionFilterConfig, LotteryIssue, MarsGenerateResponse, PlayType, V2GenerateResponse } from './types';
 import { runMarkovEngine } from './services/markovEngine';
 import { runMarsEngine } from './services/marsEngine';
 import { runSandboxBacktest } from './services/backtestEngine';
 import { getHistoricalData } from './services/lotteryData';
 import { useRealtimeLottery } from './hooks/useRealtimeLottery';
+import { SmartFilterPanel } from './components/SmartFilterPanel';
+import { getDefaultFilterConfig } from './services/filterEngine';
 
 export default function App() {
   const [playType, setPlayType] = useState<PlayType>('ssq');
@@ -21,6 +23,14 @@ export default function App() {
   const [historyLimit, setHistoryLimit] = useState<number>(50);
   const [ticketCount, setTicketCount] = useState<number>(20);
   const [selectedHistoricalOffset, setSelectedHistoricalOffset] = useState<number>(0);
+
+  // Smart Exclusion & Pattern Filter state
+  const [filterConfig, setFilterConfig] = useState<ExclusionFilterConfig>(() => getDefaultFilterConfig('ssq'));
+
+  // Sync default filter config on playType switch
+  useEffect(() => {
+    setFilterConfig(getDefaultFilterConfig(playType));
+  }, [playType]);
 
   // Custom baseline draw storage per play type
   const [customHistories, setCustomHistories] = useState<Record<PlayType, LotteryIssue[] | null>>({
@@ -60,7 +70,8 @@ export default function App() {
               play_type: playType,
               history_limit: historyLimit,
               ticket_count: ticketCount,
-              custom_history: activeList
+              custom_history: activeList,
+              filter_config: filterConfig
             })
           });
           if (res.ok) {
@@ -70,7 +81,7 @@ export default function App() {
             throw new Error('API response not ok');
           }
         } catch {
-          const localData = runMarkovEngine(playType, historyLimit, ticketCount, activeList);
+          const localData = runMarkovEngine(playType, historyLimit, ticketCount, activeList, filterConfig);
           setV2Data(localData);
         }
       } else {
@@ -82,7 +93,8 @@ export default function App() {
               play_type: playType,
               history_limit: historyLimit,
               ticket_limit: ticketCount,
-              custom_history: activeList
+              custom_history: activeList,
+              filter_config: filterConfig
             })
           });
           if (res.ok) {
@@ -92,7 +104,7 @@ export default function App() {
             throw new Error('API response not ok');
           }
         } catch {
-          const localData = runMarsEngine(playType, historyLimit, ticketCount, activeList);
+          const localData = runMarsEngine(playType, historyLimit, ticketCount, activeList, filterConfig);
           setMarsData(localData);
         }
       }
@@ -101,7 +113,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [playType, engineType, historyLimit, ticketCount, activeFullHistory, selectedHistoricalOffset]);
+  }, [playType, engineType, historyLimit, ticketCount, activeFullHistory, selectedHistoricalOffset, filterConfig]);
 
   // Real-time live lottery clock and schedule tracker
   const { scheduleInfo, currentLiveTime } = useRealtimeLottery(
@@ -178,6 +190,13 @@ export default function App() {
   const baseTargetInfo =
     engineType === 'v2' ? v2Data?.targetIssueInfo : marsData?.targetIssueInfo;
 
+  const coldCandidateReds = useMemo(() => {
+    if (marsData?.coldMotherSet && marsData.coldMotherSet.length > 0) {
+      return marsData.coldMotherSet;
+    }
+    return playType === 'ssq' ? [3, 14, 27, 33] : [4, 17, 28, 35];
+  }, [marsData?.coldMotherSet, playType]);
+
   const activeTargetInfo = useMemo(() => {
     if (baseTargetInfo) {
       if (selectedHistoricalOffset === 0) {
@@ -229,6 +248,16 @@ export default function App() {
           onHistoryLimitChange={setHistoryLimit}
           onTicketCountChange={setTicketCount}
           actualTicketCount={currentTickets.length}
+        />
+
+        {/* Module 1.5: Smart Exclusion & Reduction Filter Panel (排除法 & 缩水器) */}
+        <SmartFilterPanel
+          playType={playType}
+          filterConfig={filterConfig}
+          onFilterConfigChange={setFilterConfig}
+          onApplyAndRecalculate={executeEngineCalculation}
+          coldCandidateReds={coldCandidateReds}
+          disabled={loading}
         />
 
         {/* Module 2: Dedicated Baseline & Target Upcoming Issue Cockpit */}

@@ -185,6 +185,23 @@ export const TicketList: React.FC<TicketListProps> = ({
               <div className="text-[11px] text-slate-500 font-mono tracking-wide">
                 纯文本：<span className="font-semibold text-slate-800">{redText} + {blueText}</span>
               </div>
+
+              {/* Smart Filter Verification Badges */}
+              {t.filterReasons && t.filterReasons.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-200/60">
+                  <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                    缩水校验
+                  </span>
+                  {t.filterReasons.slice(0, 4).map((reason, rIdx) => (
+                    <span
+                      key={rIdx}
+                      className="text-[10px] text-slate-600 bg-white border border-slate-200 px-1.5 py-0.5 rounded"
+                    >
+                      {reason}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

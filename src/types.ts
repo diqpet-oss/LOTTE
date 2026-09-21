@@ -29,6 +29,29 @@ export interface GeneratedTicket {
   sumVal: number;
   bankerCount: number;
   isCoveringTicket?: boolean;
+  filterReasons?: string[];
+  primeCount?: number;
+  consecutiveCount?: number;
+  repeatCount?: number;
+}
+
+export interface ExclusionFilterConfig {
+  enabled: boolean;
+  // 1. 杀号排除 (绝杀红球与蓝球)
+  killedReds: number[];
+  killedBlues: number[];
+  // 2. 必选胆码 (指定必出红球)
+  mustIncludeReds: number[];
+  // 3. 和值区间过滤 [min, max]
+  sumRange: [number, number];
+  // 4. 连号控制: 0 = 严禁连号, 1 = 允许最大2连号(排除3+连号), 2 = 不限制
+  consecutiveMode: 'no_consecutive' | 'allow_pair_only' | 'unrestricted';
+  // 5. 奇偶比限制
+  allowedOddEvenRatios: string[];
+  // 6. 重号区间 (与上期重号数量) [min, max]
+  repeatCountRange: [number, number];
+  // 7. 质数个数限制 [min, max]
+  primeCountRange: [number, number];
 }
 
 export interface MarkovNumberProb {
