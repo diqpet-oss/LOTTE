@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { X, Copy, Check, Terminal, FileCode, Download, ExternalLink } from 'lucide-react';
+import mainPy from '../../python_backend/main.py?raw';
+import marsEnginePy from '../../python_backend/mars_engine.py?raw';
+import reqTxt from '../../python_backend/requirements.txt?raw';
+
+const FALLBACK_FILES: Record<string, string> = {
+  'main.py': mainPy,
+  'mars_engine.py': marsEnginePy,
+  'requirements.txt': reqTxt,
+};
 
 interface PythonSourceModalProps {
   isOpen: boolean;
@@ -8,7 +17,7 @@ interface PythonSourceModalProps {
 
 export const PythonSourceModal: React.FC<PythonSourceModalProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState<'main.py' | 'mars_engine.py' | 'requirements.txt'>('main.py');
-  const [fileContents, setFileContents] = useState<Record<string, string>>({});
+  const [fileContents, setFileContents] = useState<Record<string, string>>(FALLBACK_FILES);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -25,9 +34,13 @@ export const PythonSourceModal: React.FC<PythonSourceModalProps> = ({ isOpen, on
       if (res.ok) {
         const text = await res.text();
         setFileContents((prev) => ({ ...prev, [filename]: text }));
+      } else if (FALLBACK_FILES[filename]) {
+        setFileContents((prev) => ({ ...prev, [filename]: FALLBACK_FILES[filename] }));
       }
     } catch (e) {
-      console.error(e);
+      if (FALLBACK_FILES[filename]) {
+        setFileContents((prev) => ({ ...prev, [filename]: FALLBACK_FILES[filename] }));
+      }
     } finally {
       setLoading(false);
     }
@@ -35,7 +48,7 @@ export const PythonSourceModal: React.FC<PythonSourceModalProps> = ({ isOpen, on
 
   if (!isOpen) return null;
 
-  const currentContent = fileContents[activeTab] || '// 正在加载源码...';
+  const currentContent = fileContents[activeTab] || FALLBACK_FILES[activeTab] || '// 正在加载源码...';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(currentContent);
