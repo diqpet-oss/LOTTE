@@ -139,10 +139,10 @@ export function getPreviousCompletedDrawDate(playType: PlayType, nowBeijing: Dat
 
 /**
  * 计算双色球与大乐透基于日历的期号跨度
- * 以 2026-09-15 第 2026107 期 (双色球) 和 2026-09-16 第 26106 期 (大乐透) 为基准锚点
+ * 以 2026-10-11 第 2026116 期 (双色球) 和 2026-10-10 第 26115 期 (大乐透) 为基准锚点
  */
-const SSQ_ANCHOR = { dateStr: '2026-09-15', issueNum: 2026107 };
-const DLT_ANCHOR = { dateStr: '2026-09-16', issueNum: 26106 };
+const SSQ_ANCHOR = { dateStr: '2026-10-11', issueNum: 2026116 };
+const DLT_ANCHOR = { dateStr: '2026-10-10', issueNum: 26115 };
 
 export function calculateIssueNumberByDate(playType: PlayType, targetDate: Date): string {
   const anchor = playType === 'ssq' ? SSQ_ANCHOR : DLT_ANCHOR;
@@ -201,10 +201,10 @@ export function getRealtimeDrawSchedule(
   // 获取最近已开奖基准
   // 查找历史数据中最近的一期
   const baseline = historyData[0] || {
-    issue: playType === 'ssq' ? '2026107' : '26106',
-    date: playType === 'ssq' ? '2026-09-15' : '2026-09-16',
-    reds: playType === 'ssq' ? [4, 6, 11, 14, 19, 26] : [3, 8, 19, 24, 31],
-    blues: playType === 'ssq' ? [15] : [4, 11]
+    issue: playType === 'ssq' ? '2026116' : '26115',
+    date: playType === 'ssq' ? '2026-10-11' : '2026-10-10',
+    reds: playType === 'ssq' ? [10, 19, 24, 27, 28, 33] : [12, 20, 32, 33, 35],
+    blues: playType === 'ssq' ? [12] : [6, 7]
   };
 
   return {

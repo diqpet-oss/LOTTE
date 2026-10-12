@@ -16,6 +16,13 @@ import { getHistoricalData } from './services/lotteryData';
 import { useRealtimeLottery } from './hooks/useRealtimeLottery';
 import { SmartFilterPanel } from './components/SmartFilterPanel';
 import { getDefaultFilterConfig } from './services/filterEngine';
+import {
+  getStoredHistory,
+  saveStoredHistory,
+  clearStoredHistory,
+  getLastSyncTime,
+  syncLiveDrawData
+} from './services/liveLotterySync';
 
 export default function App() {
   const [playType, setPlayType] = useState<PlayType>('ssq');
@@ -32,11 +39,21 @@ export default function App() {
     setFilterConfig(getDefaultFilterConfig(playType));
   }, [playType]);
 
-  // Custom baseline draw storage per play type
-  const [customHistories, setCustomHistories] = useState<Record<PlayType, LotteryIssue[] | null>>({
-    ssq: null,
-    dlt: null
-  });
+  // Custom baseline draw storage per play type (persisted in localStorage)
+  const [customHistories, setCustomHistories] = useState<Record<PlayType, LotteryIssue[] | null>>(() => ({
+    ssq: getStoredHistory('ssq'),
+    dlt: getStoredHistory('dlt')
+  }));
+
+  // Live dynamic synchronization states
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [syncSource, setSyncSource] = useState<string>('权威官方直联');
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(() => getLastSyncTime('ssq'));
+
+  useEffect(() => {
+    setLastSyncTime(getLastSyncTime(playType));
+  }, [playType]);
 
   const [v2Data, setV2Data] = useState<V2GenerateResponse | null>(null);
   const [marsData, setMarsData] = useState<MarsGenerateResponse | null>(null);
@@ -164,22 +181,52 @@ export default function App() {
     handleRunBacktest(40);
   }, [playType, engineType]);
 
+  // Live dynamic fetch synchronization
+  const handleTriggerLiveSync = useCallback(async () => {
+    setIsSyncing(true);
+    setSyncNotice(null);
+    try {
+      const res = await syncLiveDrawData(playType);
+      if (res.success) {
+        setCustomHistories((prev) => ({
+          ...prev,
+          [playType]: res.data
+        }));
+        setSyncSource(res.source);
+        setLastSyncTime(res.syncTime);
+        setSyncNotice(res.message);
+        setTimeout(() => setSyncNotice(null), 6000);
+      }
+    } catch {
+      setSyncNotice('动态同步遇到网络波动，已平滑保留当前基准');
+      setTimeout(() => setSyncNotice(null), 4000);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [playType]);
+
   // Ingest custom new draw baseline
   const handleAddCustomDraw = (newDraw: LotteryIssue) => {
     const currentList = customHistories[playType] || getHistoricalData(playType, 100);
     const updated = [newDraw, ...currentList.filter((x) => x.issue !== newDraw.issue)];
+    saveStoredHistory(playType, updated);
     setCustomHistories((prev) => ({
       ...prev,
       [playType]: updated
     }));
+    setSyncNotice(`已手工录入并挂载第 ${newDraw.issue} 期为最新基准`);
+    setTimeout(() => setSyncNotice(null), 4000);
   };
 
   // Reset baseline to default
   const handleResetHistory = () => {
+    clearStoredHistory(playType);
     setCustomHistories((prev) => ({
       ...prev,
       [playType]: null
     }));
+    setSyncNotice('已重置为系统默认基准开奖库');
+    setTimeout(() => setSyncNotice(null), 3000);
   };
 
   const currentTickets =
@@ -270,6 +317,11 @@ export default function App() {
           isCustomized={Boolean(customHistories[playType])}
           selectedHistoricalOffset={selectedHistoricalOffset}
           onSelectHistoricalOffset={setSelectedHistoricalOffset}
+          isSyncing={isSyncing}
+          onTriggerLiveSync={handleTriggerLiveSync}
+          lastSyncTime={lastSyncTime}
+          syncSource={syncSource}
+          syncNotice={syncNotice}
         />
 
         {/* Module 3: Engine Status & Mathematical Metrics Banner */}

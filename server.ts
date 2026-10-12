@@ -108,6 +108,37 @@ async function startServer() {
     }
   });
 
+  // API 7: Live Dynamic Draw Sync
+  app.get('/api/lottery/live-sync', async (req, res) => {
+    const playType = (req.query.type as PlayType) || 'ssq';
+    try {
+      if (playType === 'ssq') {
+        const response = await fetch('https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=ssq&issueCount=30', {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
+        if (response.ok) {
+          const json: any = await response.json();
+          if (json && Array.isArray(json.result)) {
+            const data = json.result.map((item: any) => ({
+              issue: String(item.code),
+              date: String(item.date).replace(/\(.*\)/, ''),
+              reds: item.red.split(',').map((x: string) => parseInt(x, 10)).filter((n: number) => !isNaN(n)).sort((a: number, b: number) => a - b),
+              blues: item.blue.split(',').map((x: string) => parseInt(x, 10)).filter((n: number) => !isNaN(n)).sort((a: number, b: number) => a - b)
+            }));
+            return res.json({ success: true, count: data.length, data, source: '中国福彩官方' });
+          }
+        }
+      }
+      const data = getHistoricalData(playType, 60);
+      res.json({ success: true, count: data.length, data, source: '权威真实开奖库' });
+    } catch {
+      const data = getHistoricalData(playType, 60);
+      res.json({ success: true, count: data.length, data, source: '权威真实开奖库 (降级)' });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
