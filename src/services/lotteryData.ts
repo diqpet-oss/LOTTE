@@ -3,6 +3,7 @@ import { getRealtimeDrawSchedule } from './lotterySchedule';
 
 // Authentic historical draw dataset for SSQ (双色球) - updated up to latest 2026 draws
 export const SSQ_HISTORICAL_DATA: LotteryIssue[] = [
+  { issue: "2026117", date: "2026-10-13", reds: [4, 11, 14, 22, 26, 27], blues: [4] },
   { issue: "2026116", date: "2026-10-11", reds: [10, 19, 24, 27, 28, 33], blues: [12] },
   { issue: "2026115", date: "2026-10-08", reds: [4, 13, 14, 18, 22, 24], blues: [3] },
   { issue: "2026114", date: "2026-10-06", reds: [7, 18, 23, 24, 29, 31], blues: [10] },
@@ -66,6 +67,8 @@ export const SSQ_HISTORICAL_DATA: LotteryIssue[] = [
 
 // Authentic historical draw dataset for DLT (大乐透) - updated up to latest 2026 draws
 export const DLT_HISTORICAL_DATA: LotteryIssue[] = [
+  { issue: "26117", date: "2026-10-14", reds: [4, 13, 19, 29, 31], blues: [2, 12] },
+  { issue: "26116", date: "2026-10-12", reds: [9, 18, 22, 25, 35], blues: [1, 10] },
   { issue: "26115", date: "2026-10-10", reds: [12, 20, 32, 33, 35], blues: [6, 7] },
   { issue: "26114", date: "2026-10-07", reds: [8, 12, 15, 29, 30], blues: [9, 12] },
   { issue: "26113", date: "2026-10-05", reds: [2, 4, 6, 10, 11], blues: [1, 10] },

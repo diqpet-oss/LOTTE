@@ -155,6 +155,10 @@ export const BaselineTargetBanner: React.FC<BaselineTargetBannerProps> = ({
                 <span>数据源: {syncSource || '官方接口实时直联'}</span>
                 {lastSyncTime && <span className="text-emerald-600 text-[11px] font-normal">({lastSyncTime.slice(11)})</span>}
               </span>
+              <span className="px-2 py-0.5 text-xs rounded bg-blue-50 text-blue-800 border border-blue-200 flex items-center gap-1 font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                <span>刷新自主更新: 开启</span>
+              </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               严格按照当下日历时钟动态追踪开奖节奏，以就近真实已开奖一期为输入基底，推演生成<strong>当下即将开奖的一期号</strong>

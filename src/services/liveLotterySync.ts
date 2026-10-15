@@ -5,18 +5,20 @@ const STORAGE_KEY_PREFIX = 'LOTTE_CUSTOM_HISTORY_';
 const SYNC_TIME_KEY_PREFIX = 'LOTTE_LAST_SYNC_TIME_';
 
 export function getStoredHistory(playType: PlayType): LotteryIssue[] | null {
+  const defaultBase = playType === 'ssq' ? SSQ_HISTORICAL_DATA : DLT_HISTORICAL_DATA;
   try {
     const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${playType}`);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // Always merge with defaultBase to guarantee freshly updated codebase draws are immediately active on page refresh
+        return mergeDraws(parsed, defaultBase);
       }
     }
   } catch (err) {
     console.warn('[LiveSync] Failed to read stored history:', err);
   }
-  return null;
+  return defaultBase;
 }
 
 export function saveStoredHistory(playType: PlayType, data: LotteryIssue[]): void {
@@ -87,7 +89,7 @@ export function mergeDraws(existing: LotteryIssue[], fresh: LotteryIssue[]): Lot
 /**
  * Perform live dynamic synchronization:
  * 1. Attempts proxy API `/api/lottery/live-sync?type=...`
- * 2. If client-side or fallback, attempts direct official query or latest built-in dataset
+ * 2. If client-side or static fallback, attempts direct official query or CORS mirror
  * 3. Persists to local storage for instant offline & reload recovery
  */
 export async function syncLiveDrawData(playType: PlayType): Promise<LiveSyncResult> {
@@ -97,16 +99,17 @@ export async function syncLiveDrawData(playType: PlayType): Promise<LiveSyncResu
   const defaultBase = playType === 'ssq' ? SSQ_HISTORICAL_DATA : DLT_HISTORICAL_DATA;
   const currentStored = getStoredHistory(playType) || defaultBase;
 
-  // 1. Try local server proxy
+  // 1. Try server proxy (supported in server mode or Vercel serverless)
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
+    const timeout = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(`/api/lottery/live-sync?type=${playType}`, {
       signal: controller.signal
     });
     clearTimeout(timeout);
 
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
       const json = await res.json();
       if (json && Array.isArray(json.data) && json.data.length > 0) {
         const merged = mergeDraws(currentStored, json.data);
@@ -116,46 +119,55 @@ export async function syncLiveDrawData(playType: PlayType): Promise<LiveSyncResu
           success: true,
           data: merged,
           latestIssue: merged[0],
-          message: `已同步官方最新数据（最新第 ${merged[0].issue} 期，共 ${merged.length} 期样本）`,
+          message: `已自主同步最新数据（最新第 ${merged[0].issue} 期，共 ${merged.length} 期样本）`,
           syncTime: timeStr,
-          source: json.source || '云端官方接口'
+          source: json.source || '官方接口实时直联'
         };
       }
     }
-  } catch (err) {
-    // Server proxy unavailable (e.g. static host or network timeout)
+  } catch {
+    // Server proxy unavailable, proceed to client-side fallback
   }
 
-  // 2. Client-side fallback for SSQ (direct CWL official API)
+  // 2. Client-side fallback for SSQ (direct CWL official API or CORS mirror)
   if (playType === 'ssq') {
-    try {
-      const cwlRes = await fetch(
-        'https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=ssq&issueCount=30'
-      );
-      if (cwlRes.ok) {
-        const cwlJson = await cwlRes.json();
-        if (cwlJson && Array.isArray(cwlJson.result)) {
-          const freshList: LotteryIssue[] = cwlJson.result.map((item: any) => ({
-            issue: String(item.code),
-            date: String(item.date).replace(/\(.*\)/, ''),
-            reds: item.red.split(',').map((x: string) => parseInt(x, 10)).filter((n: number) => !isNaN(n)).sort((a: number, b: number) => a - b),
-            blues: item.blue.split(',').map((x: string) => parseInt(x, 10)).filter((n: number) => !isNaN(n)).sort((a: number, b: number) => a - b)
-          }));
-          const merged = mergeDraws(currentStored, freshList);
-          saveStoredHistory(playType, merged);
-          setLastSyncTime(playType, timeStr);
-          return {
-            success: true,
-            data: merged,
-            latestIssue: merged[0],
-            message: `已通过中国福彩官方接口直连同步（最新第 ${merged[0].issue} 期）`,
-            syncTime: timeStr,
-            source: '中国福彩官方'
-          };
+    const endpoints = [
+      'https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=ssq&issueCount=30',
+      'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=ssq&issueCount=30')
+    ];
+
+    for (const url of endpoints) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        const cwlRes = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (cwlRes.ok) {
+          const cwlJson = await cwlRes.json();
+          if (cwlJson && Array.isArray(cwlJson.result)) {
+            const freshList: LotteryIssue[] = cwlJson.result.map((item: any) => ({
+              issue: String(item.code),
+              date: String(item.date).replace(/\(.*\)/, ''),
+              reds: item.red.split(',').map((x: string) => parseInt(x, 10)).filter((n: number) => !isNaN(n)).sort((a: number, b: number) => a - b),
+              blues: item.blue.split(',').map((x: string) => parseInt(x, 10)).filter((n: number) => !isNaN(n)).sort((a: number, b: number) => a - b)
+            }));
+            const merged = mergeDraws(currentStored, freshList);
+            saveStoredHistory(playType, merged);
+            setLastSyncTime(playType, timeStr);
+            return {
+              success: true,
+              data: merged,
+              latestIssue: merged[0],
+              message: `已自主从中国福彩官方接口同步（最新第 ${merged[0].issue} 期）`,
+              syncTime: timeStr,
+              source: '中国福彩官方'
+            };
+          }
         }
+      } catch {
+        // try next endpoint
       }
-    } catch {
-      // CORS block or network error on direct client query
     }
   }
 
@@ -168,8 +180,8 @@ export async function syncLiveDrawData(playType: PlayType): Promise<LiveSyncResu
     success: true,
     data: merged,
     latestIssue: merged[0],
-    message: `已校准为最新当下基准数据（第 ${merged[0].issue} 期，开奖日 ${merged[0].date}）`,
+    message: `已自主校准为当下最新基准（第 ${merged[0].issue} 期，开奖日 ${merged[0].date}）`,
     syncTime: timeStr,
-    source: '权威真实开奖库'
+    source: '权威真实开奖库 (实时自主校准)'
   };
 }

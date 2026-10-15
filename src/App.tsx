@@ -181,7 +181,7 @@ export default function App() {
     handleRunBacktest(40);
   }, [playType, engineType]);
 
-  // Live dynamic fetch synchronization
+  // Live dynamic fetch synchronization (manual trigger)
   const handleTriggerLiveSync = useCallback(async () => {
     setIsSyncing(true);
     setSyncNotice(null);
@@ -203,6 +203,42 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
+  }, [playType]);
+
+  // Autonomous dynamic sync on page load / page refresh and game switch
+  useEffect(() => {
+    let isMounted = true;
+    const runAutonomousSync = async () => {
+      setIsSyncing(true);
+      try {
+        const res = await syncLiveDrawData(playType);
+        if (isMounted && res.success) {
+          setCustomHistories((prev) => ({
+            ...prev,
+            [playType]: res.data
+          }));
+          setSyncSource(res.source);
+          setLastSyncTime(res.syncTime);
+          setSyncNotice(`页面已自主核对并更新：最新第 ${res.data[0].issue} 期基准（${res.data[0].date}，${res.source}）`);
+          setTimeout(() => {
+            if (isMounted) setSyncNotice(null);
+          }, 5000);
+        }
+      } catch {
+        // silent fallback to current verified baseline
+      } finally {
+        if (isMounted) setIsSyncing(false);
+      }
+    };
+
+    runAutonomousSync();
+
+    // Auto-poll in background every 2 minutes while page is kept active
+    const timer = setInterval(runAutonomousSync, 120000);
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
   }, [playType]);
 
   // Ingest custom new draw baseline
